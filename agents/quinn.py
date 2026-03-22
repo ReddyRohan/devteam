@@ -229,7 +229,8 @@ async def _run_task(message: discord.Message, prompt: str):
 
 @client.event
 async def on_message(message: discord.Message):
-    if message.author.bot:
+    # Ignore own messages; allow other bots (agents hand off to each other)
+    if message.author == client.user:
         return
 
     ctx = check_resume(message, client, _pending)

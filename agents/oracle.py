@@ -52,7 +52,8 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    if message.author.bot:
+    # Ignore own messages; allow other bots (agents hand off to each other)
+    if message.author == client.user:
         return
 
     # Check resume FIRST — thread replies have different channel IDs than #tasks

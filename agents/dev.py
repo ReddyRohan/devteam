@@ -121,7 +121,7 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         # Auto-handoff to Quinn for testing
         # Extract file paths from response so Quinn knows what to test
         files_mentioned = re.findall(r'[\w./\-]+\.(?:py|dart|ts|js|java|go|cs|rb|swift)', response)
-        files_str = "\n".join(f"- {f}" for f in dict.fromkeys(files_mentioned)[:10]) if files_mentioned else "- (see Dev summary above)"
+        files_str = "\n".join(f"- {f}" for f in list(dict.fromkeys(files_mentioned))[:10]) if files_mentioned else "- (see Dev summary above)"
         quinn_work_order = (
             f"Dev just completed this task and needs test coverage.\n\n"
             f"**Original task:**\n{message.content[:500]}\n\n"
