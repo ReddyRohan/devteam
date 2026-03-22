@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dev — senior developer agent. Runs on laptop. Listens in #development."""
 import os, re, discord
-from agents_base import acquire_agent_lock,  make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for
+from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, handoff
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -115,9 +115,29 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         for chunk in chunks:
             await message.reply(chunk)
         await message.add_reaction("✅")
-        # Clear any pending state for this channel
         _pending.pop(message.channel.id, None)
         print(f"Dev: done", flush=True)
+
+        # Auto-handoff to Quinn for testing
+        # Extract file paths from response so Quinn knows what to test
+        files_mentioned = re.findall(r'[\w./\-]+\.(?:py|dart|ts|js|java|go|cs|rb|swift)', response)
+        files_str = "\n".join(f"- {f}" for f in dict.fromkeys(files_mentioned)[:10]) if files_mentioned else "- (see Dev summary above)"
+        quinn_work_order = (
+            f"Dev just completed this task and needs test coverage.\n\n"
+            f"**Original task:**\n{message.content[:500]}\n\n"
+            f"**Dev summary:**\n{response[:600]}\n\n"
+            f"**Files to test:**\n{files_str}\n\n"
+            f"Please:\n"
+            f"1. Read the files Dev created/modified\n"
+            f"2. Check for existing tests\n"
+            f"3. Write or update automated tests to cover the new code\n"
+            f"4. Run the tests and report pass/fail + coverage delta"
+        )
+        try:
+            await handoff(client, "QUINN", quinn_work_order, "Dev")
+            print("[Handoff] Dev → QUINN (auto)", flush=True)
+        except Exception as he:
+            print(f"Dev: Quinn handoff failed: {he}", flush=True)
 
     except Exception as e:
         import traceback
