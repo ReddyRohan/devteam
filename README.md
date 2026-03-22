@@ -274,3 +274,120 @@ devteam/
 ├── README.md            # This file
 └── DEPLOYMENT.md        # Deployment gotchas
 ```
+
+---
+
+## MCP Servers — Detailed Setup
+
+The agents use three MCP servers. All are launched automatically by `agents_base.py` — you just need the binaries installed.
+
+### 1. Filesystem MCP (`@modelcontextprotocol/server-filesystem`)
+Gives agents read/write access to specific directories.
+
+```bash
+# Install Node.js 20+ first (see Step 4 in setup)
+npm install -g @modelcontextprotocol/server-filesystem
+
+# npm may install to ~/.npm-global — add to PATH if npx is not found:
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify
+npx @modelcontextprotocol/server-filesystem --help
+```
+
+Allowed directories are set per-agent in `dev.py`:
+```python
+mcp_filesystem([os.path.expanduser("~/"), "/tmp", "/mnt/c/Rohan"])
+```
+Change these to suit your environment.
+
+### 2. Shell MCP (`mcp-shell-server`)
+Gives agents a real terminal — python3, bash, git, curl, npm, docker, az, gh, etc.
+
+```bash
+uvx mcp-shell-server --help   # auto-installs on first run
+
+# Verify the binary is cached
+ls ~/.cache/uv/  # should show archive directories
+```
+
+**Allowed commands** are set via `ALLOW_COMMANDS` env var. `agents_base.py` sets a default list automatically:
+```
+python3, python, bash, sh, git, curl, wget, npm, node, npx, pip, pip3,
+uv, uvx, ls, cat, echo, mkdir, cp, mv, rm, find, grep, sed, awk,
+chmod, touch, head, tail, wc, sort, uniq, cut, tr, tee,
+docker, az, gh, jq, zip, unzip, tar, env, which, pwd, true, false, test, read, export
+```
+To restrict or expand: pass `allowed_commands=[...]` to `mcp_shell()` in your agent file.
+
+### 3. Fetch MCP (`mcp-server-fetch`)
+Gives agents the ability to fetch any URL — docs, APIs, DuckDuckGo search.
+
+```bash
+uvx mcp-server-fetch --help   # auto-installs on first run
+```
+
+No configuration needed. Used by Dev for web search:
+```python
+# DuckDuckGo search pattern used by Dev:
+fetch("https://html.duckduckgo.com/html/?q=your+query")
+```
+
+---
+
+## LiteLLM — Detailed Setup
+
+LiteLLM is a proxy that translates OpenAI API calls to any model provider.
+
+### Install the correct version
+
+```bash
+# LiteLLM 1.63.x is required — newer versions break with OpenAI Agents SDK
+pip install "litellm==1.63.2"
+
+litellm --version  # should print 1.63.x
+```
+
+### Configure
+
+Copy and edit the template:
+```bash
+cp litellm-config.yaml ~/litellm-config.yaml
+```
+
+Edit `~/litellm-config.yaml` and fill in your model provider. See comments in the file for Azure OpenAI and plain OpenAI options.
+
+**GitHub Copilot Enterprise token** (refreshes every hour — use the startup.sh injection pattern):
+```bash
+# Get current token
+gh auth token
+
+# startup.sh injects it at runtime so you never hardcode it:
+GH_TOKEN=$(gh auth token)
+sed "s/YOUR_GITHUB_COPILOT_TOKEN/$GH_TOKEN/g" litellm-config.yaml > /tmp/litellm-active.yaml
+litellm --config /tmp/litellm-active.yaml --port 4000
+```
+
+### Start LiteLLM
+
+```bash
+litellm --config ~/litellm-config.yaml --port 4000 &
+
+# Check health
+curl http://localhost:4000/health
+
+# List model names (use one of these as LITELLM_MODEL in .env)
+curl -s http://localhost:4000/v1/models | python3 -m json.tool | grep '"id"'
+```
+
+### Verify a model works end-to-end
+
+```bash
+curl http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer placeholder" \
+  -d '{"model": "claude-sonnet-4-5", "messages": [{"role":"user","content":"say hi"}]}'
+```

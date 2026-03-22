@@ -1,0 +1,50 @@
+# LiteLLM config for devteam
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+#
+# IMPORTANT: LiteLLM 1.63.x is required.
+# Versions 1.82+ break with the Responses API used by OpenAI Agents SDK.
+# Install with: pip install "litellm==1.63.2"
+#
+# The model_name values here become the IDs visible at /v1/models.
+# Set LITELLM_MODEL in .env to match one of these model_name values.
+
+model_list:
+
+  # ── Option A: GitHub Copilot Enterprise ────────────────────────────────
+  # Replace YOUR_GITHUB_COPILOT_TOKEN with output of: gh auth token
+  # Or inject at runtime — see startup.sh for the sed substitution pattern.
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      model: openai/claude-sonnet-4.6
+      api_base: https://api.enterprise.githubcopilot.com
+      api_key: YOUR_GITHUB_COPILOT_TOKEN
+      extra_headers:
+        Copilot-Integration-Id: vscode-chat
+        Editor-Version: vscode/1.85.0
+
+  - model_name: claude-opus-4-5
+    litellm_params:
+      model: openai/claude-opus-4.6
+      api_base: https://api.enterprise.githubcopilot.com
+      api_key: YOUR_GITHUB_COPILOT_TOKEN
+      extra_headers:
+        Copilot-Integration-Id: vscode-chat
+        Editor-Version: vscode/1.85.0
+
+  # ── Option B: Azure OpenAI ─────────────────────────────────────────────
+  # Uncomment and fill in if using Azure OpenAI instead
+  # - model_name: gpt-4-1
+  #   litellm_params:
+  #     model: azure/gpt-4.1
+  #     api_base: https://<your-resource>.openai.azure.com
+  #     api_key: YOUR_AZURE_OPENAI_KEY
+  #     api_version: "2024-02-01"
+
+  # ── Option C: OpenAI directly ──────────────────────────────────────────
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: gpt-4o
+  #     api_key: YOUR_OPENAI_API_KEY
+
+litellm_settings:
+  drop_params: true   # silently drop unsupported params instead of erroring
