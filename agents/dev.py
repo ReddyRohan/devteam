@@ -139,6 +139,16 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         except Exception as he:
             print(f"Dev: Quinn handoff failed: {he}", flush=True)
 
+        # Notify #oversight so you know Dev is done
+        oversight = client.get_channel(CH_OVERSIGHT)
+        if oversight:
+            summary = response.split("\n")[0][:200]
+            await oversight.send(
+                f"✅ **Dev finished**\n"
+                f"{summary}\n"
+                f"[TASK COMPLETE]"
+            )
+
     except Exception as e:
         import traceback
         tb = traceback.format_exc()

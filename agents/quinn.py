@@ -217,6 +217,17 @@ async def _run_task(message: discord.Message, prompt: str):
             await message.reply(chunk)
         await message.add_reaction("✅")
         _pending.pop(message.channel.id, None)
+
+        # Notify #oversight so you know Quinn is done
+        oversight = client.get_channel(CH_OVERSIGHT)
+        if oversight:
+            # One-line summary from first line of response
+            summary = response.split("\n")[0][:200]
+            await oversight.send(
+                f"✅ **Quinn finished**\n"
+                f"{summary}\n"
+                f"[TASK COMPLETE]"
+            )
         print("Quinn: done", flush=True)
 
     except Exception as e:
