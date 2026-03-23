@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Oracle — orchestrator agent. Listens in #tasks, clarifies, creates work orders."""
 import asyncio, os, discord, datetime
-from agents_base import acquire_agent_lock,  make_agent, run_agent, post_question, check_resume, handoff
+from agents_base import acquire_agent_lock, make_agent, run_agent, post_question, check_resume, handoff, ado_create_epic, ado_create_story, ado_update_state
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -148,7 +148,39 @@ Reply with ONLY the agent name (e.g. DEV). Pick the single best fit."""
         if target_agent not in ("DEV","QUINN","ARJUN","PRIYA","LEX","DEX"):
             target_agent = "DEV"
 
-        await handoff(client, target_agent, work_order, "Oracle", task_thread.jump_url)
+        # Create ADO Epic + User Story
+        ado_epic_id = None
+        ado_story_id = None
+        ado_story_url = None
+        try:
+            epic = ado_create_epic(
+                title=task_content[:128],
+                description=f"User request: {task_content}"
+            )
+            ado_epic_id = epic["id"]
+            story = ado_create_story(
+                title=work_order.split("\n")[0][:128],
+                description=work_order,
+                parent_epic_id=ado_epic_id,
+                assigned_agent=target_agent
+            )
+            ado_story_id = story["id"]
+            ado_story_url = story["url"]
+            await task_thread.send(
+                f"📋 **ADO work items created:**\n"
+                f"• Epic #{ado_epic_id}: {task_content[:80]}\n"
+                f"• Story #{ado_story_id} → {target_agent}: [View in ADO]({ado_story_url})"
+            )
+            print(f"Oracle: ADO Epic #{ado_epic_id}, Story #{ado_story_id}", flush=True)
+        except Exception as ado_err:
+            print(f"Oracle: ADO creation failed (non-fatal): {ado_err}", flush=True)
+            await task_thread.send(f"⚠️ ADO creation failed: {ado_err}")
+
+        # Include ADO IDs in the handoff so agents can update state
+        ado_suffix = ""
+        if ado_story_id:
+            ado_suffix = f"\n\nADO-STORY-ID: {ado_story_id}\nADO-EPIC-ID: {ado_epic_id}"
+        await handoff(client, target_agent, work_order + ado_suffix, "Oracle", task_thread.jump_url)
 
         oversight = client.get_channel(CH_OVERSIGHT)
         if oversight:

@@ -16,6 +16,76 @@ JIRA_TOKEN   = os.getenv("JIRA_API_TOKEN", "")
 AZDO_ORG     = os.getenv("AZDO_ORG_URL", "")
 AZDO_PAT     = os.getenv("AZDO_PAT", "")
 
+import requests as _requests
+
+AZDO_ORG_NAME = (os.getenv("AZDO_ORG_URL", "https://dev.azure.com/rohanreddy0892/")
+                 .rstrip("/").split("/")[-1])
+AZDO_PROJECT_AGENT = os.getenv("AZDO_AGENT_PROJECT", "AgentTasks")
+
+def _ado_headers():
+    import base64
+    token = base64.b64encode(f":{AZDO_PAT}".encode()).decode()
+    return {
+        "Authorization": f"Basic {token}",
+        "Content-Type": "application/json-patch+json",
+        "Accept": "application/json",
+    }
+
+def _ado_wi_url(work_item_type: str):
+    return (
+        f"https://dev.azure.com/{AZDO_ORG_NAME}/{AZDO_PROJECT_AGENT}"
+        f"/_apis/wit/workitems/${work_item_type}?api-version=7.1"
+    )
+
+def ado_create_epic(title: str, description: str = "") -> dict:
+    """Create an ADO Epic. Returns {id, url}."""
+    body = [
+        {"op": "add", "path": "/fields/System.Title", "value": title},
+        {"op": "add", "path": "/fields/System.AreaPath", "value": AZDO_PROJECT_AGENT},
+    ]
+    if description:
+        body.append({"op": "add", "path": "/fields/System.Description", "value": description})
+    r = _requests.patch(_ado_wi_url("Epic"), json=body, headers=_ado_headers())
+    r.raise_for_status()
+    d = r.json()
+    return {"id": d["id"], "url": d["_links"]["html"]["href"]}
+
+def ado_create_story(title: str, description: str = "", parent_epic_id: int = None,
+                     assigned_agent: str = "") -> dict:
+    """Create an ADO User Story under an Epic. Returns {id, url}."""
+    body = [
+        {"op": "add", "path": "/fields/System.Title", "value": title},
+        {"op": "add", "path": "/fields/System.AreaPath", "value": AZDO_PROJECT_AGENT},
+        {"op": "add", "path": "/fields/System.Tags", "value": assigned_agent},
+    ]
+    if description:
+        body.append({"op": "add", "path": "/fields/System.Description", "value": description})
+    if parent_epic_id:
+        parent_url = (
+            f"https://dev.azure.com/{AZDO_ORG_NAME}/{AZDO_PROJECT_AGENT}"
+            f"/_apis/wit/workItems/{parent_epic_id}"
+        )
+        body.append({
+            "op": "add", "path": "/relations/-",
+            "value": {"rel": "System.LinkTypes.Hierarchy-Reverse", "url": parent_url}
+        })
+    r = _requests.patch(_ado_wi_url("Product Backlog Item"), json=body, headers=_ado_headers())
+    r.raise_for_status()
+    d = r.json()
+    return {"id": d["id"], "url": d["_links"]["html"]["href"]}
+
+def ado_update_state(work_item_id: int, state: str, comment: str = "") -> None:
+    """Update ADO work item state: New → Active → Closed."""
+    url = (
+        f"https://dev.azure.com/{AZDO_ORG_NAME}/{AZDO_PROJECT_AGENT}"
+        f"/_apis/wit/workitems/{work_item_id}?api-version=7.1"
+    )
+    body = [{"op": "add", "path": "/fields/System.State", "value": state}]
+    if comment:
+        body.append({"op": "add", "path": "/fields/System.History", "value": comment})
+    r = _requests.patch(url, json=body, headers=_ado_headers())
+    r.raise_for_status()
+
 HOME = os.path.expanduser("~")
 
 def acquire_agent_lock(agent_name: str):

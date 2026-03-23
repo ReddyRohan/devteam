@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Quinn — QA/tester agent. Listens in #qa for handoffs. Full-spectrum testing capabilities."""
 import os, re, discord
-from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for
+from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, ado_update_state
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -179,6 +179,17 @@ async def on_ready():
     print(f"Quinn online as {client.user}", flush=True)
 
 async def _run_task(message: discord.Message, prompt: str):
+    # Extract ADO story ID if present
+    ado_story_id = None
+    import re as _re2
+    m2 = _re2.search(r"ADO-STORY-ID:\s*(\d+)", prompt)
+    if m2:
+        ado_story_id = int(m2.group(1))
+        try:
+            ado_update_state(ado_story_id, "Committed", "Quinn agent started QA work")
+            print(f"Quinn: ADO Story #{ado_story_id} → Active", flush=True)
+        except Exception as ae:
+            print(f"Quinn: ADO state update failed: {ae}", flush=True)
     try:
         fs    = mcp_filesystem([os.path.expanduser("~/"), "/tmp", "/mnt/c/Rohan"])
         fetch = mcp_fetch()
@@ -218,13 +229,20 @@ async def _run_task(message: discord.Message, prompt: str):
         await message.add_reaction("✅")
         _pending.pop(message.channel.id, None)
 
+        if ado_story_id:
+            try:
+                ado_update_state(ado_story_id, "Done", f"Quinn QA complete: {response[:300]}")
+                print(f"Quinn: ADO Story #{ado_story_id} → Closed", flush=True)
+            except Exception as ae:
+                print(f"Quinn: ADO state update failed: {ae}", flush=True)
+
         # Notify #oversight so you know Quinn is done
         oversight = client.get_channel(CH_OVERSIGHT)
         if oversight:
-            # One-line summary from first line of response
             summary = response.split("\n")[0][:200]
+            ado_line = f"\nADO Story #{ado_story_id}" if ado_story_id else ""
             await oversight.send(
-                f"✅ **Quinn finished**\n"
+                f"✅ **Quinn finished**{ado_line}\n"
                 f"{summary}\n"
                 f"[TASK COMPLETE]"
             )

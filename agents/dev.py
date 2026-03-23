@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dev — senior developer agent. Runs on laptop. Listens in #development."""
 import os, re, discord
-from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, handoff
+from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, handoff, ado_update_state
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -77,6 +77,17 @@ async def on_ready():
 
 async def _run_task(message: discord.Message, prompt: str, output_path: str | None):
     """Run a task and handle [NEEDS INFO] by saving state and asking the user."""
+    # Extract ADO story ID if present (added by Oracle in handoff)
+    ado_story_id = None
+    import re as _re
+    m = _re.search(r"ADO-STORY-ID:\s*(\d+)", prompt)
+    if m:
+        ado_story_id = int(m.group(1))
+        try:
+            ado_update_state(ado_story_id, "Committed", "Dev agent started work")
+            print(f"Dev: ADO Story #{ado_story_id} → Active", flush=True)
+        except Exception as ae:
+            print(f"Dev: ADO state update failed: {ae}", flush=True)
     try:
         fs    = mcp_filesystem([os.path.expanduser("~/"), "/tmp", "/mnt/c/Rohan"])
         fetch = mcp_fetch()
@@ -117,11 +128,18 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         await message.add_reaction("✅")
         _pending.pop(message.channel.id, None)
         print(f"Dev: done", flush=True)
+        if ado_story_id:
+            try:
+                ado_update_state(ado_story_id, "Done", f"Dev completed: {response[:300]}")
+                print(f"Dev: ADO Story #{ado_story_id} → Closed", flush=True)
+            except Exception as ae:
+                print(f"Dev: ADO state update failed: {ae}", flush=True)
 
         # Auto-handoff to Quinn for testing
         # Extract file paths from response so Quinn knows what to test
         files_mentioned = re.findall(r'[\w./\-]+\.(?:py|dart|ts|js|java|go|cs|rb|swift)', response)
         files_str = "\n".join(f"- {f}" for f in list(dict.fromkeys(files_mentioned))[:10]) if files_mentioned else "- (see Dev summary above)"
+        ado_tag = f"\nADO-STORY-ID: {ado_story_id}" if ado_story_id else ""
         quinn_work_order = (
             f"Dev just completed this task and needs test coverage.\n\n"
             f"**Original task:**\n{message.content[:500]}\n\n"
@@ -132,6 +150,7 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
             f"2. Check for existing tests\n"
             f"3. Write or update automated tests to cover the new code\n"
             f"4. Run the tests and report pass/fail + coverage delta"
+            f"{ado_tag}"
         )
         try:
             await handoff(client, "QUINN", quinn_work_order, "Dev")
@@ -143,8 +162,9 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         oversight = client.get_channel(CH_OVERSIGHT)
         if oversight:
             summary = response.split("\n")[0][:200]
+            ado_line = f"\nADO Story #{ado_story_id}" if ado_story_id else ""
             await oversight.send(
-                f"✅ **Dev finished**\n"
+                f"✅ **Dev finished**{ado_line}\n"
                 f"{summary}\n"
                 f"[TASK COMPLETE]"
             )
