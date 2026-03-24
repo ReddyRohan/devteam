@@ -148,19 +148,63 @@ Reply with ONLY the agent name (e.g. DEV). Pick the single best fit."""
         if target_agent not in ("DEV","QUINN","ARJUN","PRIYA","LEX","DEX"):
             target_agent = "DEV"
 
+        # Generate meaningful ADO names using the LLM
+        epic_title = await run_agent(
+            agent,
+            f"""Write a concise epic title (5-8 words, title case, no quotes, no full stop) that captures the goal of this request:
+
+{task_content}
+
+Reply with ONLY the title."""
+        )
+        epic_title = epic_title.strip().strip('"').strip("'")[:100]
+
+        story_title = await run_agent(
+            agent,
+            f"""Write a concise user story title (8-12 words, title case, no quotes, no full stop) for this work order.
+Focus on WHAT will be delivered, not who does it:
+
+{work_order[:600]}
+
+Reply with ONLY the title."""
+        )
+        story_title = story_title.strip().strip('"').strip("'")[:100]
+
+        # Format description as HTML for ADO
+        import html as _html
+        def _fmt_work_order_html(wo: str) -> str:
+            lines = wo.strip().split("\n")
+            html_parts = []
+            for line in lines:
+                s = line.strip()
+                if not s:
+                    html_parts.append("<br/>")
+                elif s.startswith("## "):
+                    html_parts.append(f"<h3>{_html.escape(s[3:])}</h3>")
+                elif s.startswith("**") and s.endswith("**"):
+                    html_parts.append(f"<b>{_html.escape(s[2:-2])}</b><br/>")
+                elif s.startswith("- ") or s.startswith("• "):
+                    html_parts.append(f"<li>{_html.escape(s[2:])}</li>")
+                else:
+                    html_parts.append(f"<p>{_html.escape(s)}</p>")
+            return "\n".join(html_parts)
+
+        epic_desc_html = (
+            f"<h3>User Request</h3><p>{_html.escape(task_content)}</p>"
+            f"<h3>Assigned To</h3><p>{target_agent}</p>"
+        )
+        story_desc_html = _fmt_work_order_html(work_order)
+
         # Create ADO Epic + User Story
         ado_epic_id = None
         ado_story_id = None
         ado_story_url = None
         try:
-            epic = ado_create_epic(
-                title=task_content[:128],
-                description=f"User request: {task_content}"
-            )
+            epic = ado_create_epic(title=epic_title, description=epic_desc_html)
             ado_epic_id = epic["id"]
             story = ado_create_story(
-                title=work_order.split("\n")[0][:128],
-                description=work_order,
+                title=story_title,
+                description=story_desc_html,
                 parent_epic_id=ado_epic_id,
                 assigned_agent=target_agent
             )
@@ -168,10 +212,10 @@ Reply with ONLY the agent name (e.g. DEV). Pick the single best fit."""
             ado_story_url = story["url"]
             await task_thread.send(
                 f"📋 **ADO work items created:**\n"
-                f"• Epic #{ado_epic_id}: {task_content[:80]}\n"
+                f"• Epic #{ado_epic_id}: **{epic_title}**\n"
                 f"• Story #{ado_story_id} → {target_agent}: [View in ADO]({ado_story_url})"
             )
-            print(f"Oracle: ADO Epic #{ado_epic_id}, Story #{ado_story_id}", flush=True)
+            print(f"Oracle: ADO Epic #{ado_epic_id} '{epic_title}', Story #{ado_story_id}", flush=True)
         except Exception as ado_err:
             print(f"Oracle: ADO creation failed (non-fatal): {ado_err}", flush=True)
             await task_thread.send(f"⚠️ ADO creation failed: {ado_err}")
