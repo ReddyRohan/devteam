@@ -21,6 +21,17 @@ import requests as _requests
 AZDO_ORG_NAME = (os.getenv("AZDO_ORG_URL", "https://dev.azure.com/rohanreddy0892/")
                  .rstrip("/").split("/")[-1])
 AZDO_PROJECT_AGENT = os.getenv("AZDO_AGENT_PROJECT", "AgentTasks")
+AZDO_ASSIGNEE     = os.getenv("AZDO_ASSIGNEE_EMAIL", "rohan.reddy@royalmail.com")
+
+# Maps agent name → area path under AgentTasks
+_AGENT_AREA = {
+    "DEV":   "AgentTasks\Dev",
+    "QUINN": "AgentTasks\Quinn",
+    "ARJUN": "AgentTasks\Arjun",
+    "PRIYA": "AgentTasks\Priya",
+    "LEX":   "AgentTasks\Lex",
+    "DEX":   "AgentTasks\Dex",
+}
 
 def _ado_headers():
     import base64
@@ -40,8 +51,9 @@ def _ado_wi_url(work_item_type: str):
 def ado_create_epic(title: str, description: str = "") -> dict:
     """Create an ADO Epic. Returns {id, url}."""
     body = [
-        {"op": "add", "path": "/fields/System.Title", "value": title},
-        {"op": "add", "path": "/fields/System.AreaPath", "value": AZDO_PROJECT_AGENT},
+        {"op": "add", "path": "/fields/System.Title",      "value": title},
+        {"op": "add", "path": "/fields/System.AreaPath",   "value": AZDO_PROJECT_AGENT},
+        {"op": "add", "path": "/fields/System.AssignedTo", "value": AZDO_ASSIGNEE},
     ]
     if description:
         body.append({"op": "add", "path": "/fields/System.Description", "value": description})
@@ -53,10 +65,12 @@ def ado_create_epic(title: str, description: str = "") -> dict:
 def ado_create_story(title: str, description: str = "", parent_epic_id: int = None,
                      assigned_agent: str = "") -> dict:
     """Create an ADO User Story under an Epic. Returns {id, url}."""
+    area = _AGENT_AREA.get(assigned_agent.upper(), AZDO_PROJECT_AGENT)
     body = [
-        {"op": "add", "path": "/fields/System.Title", "value": title},
-        {"op": "add", "path": "/fields/System.AreaPath", "value": AZDO_PROJECT_AGENT},
-        {"op": "add", "path": "/fields/System.Tags", "value": assigned_agent},
+        {"op": "add", "path": "/fields/System.Title",       "value": title},
+        {"op": "add", "path": "/fields/System.AreaPath",    "value": area},
+        {"op": "add", "path": "/fields/System.Tags",        "value": f"AGENT:{assigned_agent.upper()}" if assigned_agent else ""},
+        {"op": "add", "path": "/fields/System.AssignedTo",  "value": AZDO_ASSIGNEE},
     ]
     if description:
         body.append({"op": "add", "path": "/fields/System.Description", "value": description})
@@ -73,6 +87,17 @@ def ado_create_story(title: str, description: str = "", parent_epic_id: int = No
     r.raise_for_status()
     d = r.json()
     return {"id": d["id"], "url": d["_links"]["html"]["href"]}
+
+
+def ado_add_comment(work_item_id: int, comment: str) -> None:
+    """Add a discussion comment to an ADO work item without changing state."""
+    url = (
+        f"https://dev.azure.com/{AZDO_ORG_NAME}/{AZDO_PROJECT_AGENT}"
+        f"/_apis/wit/workitems/{work_item_id}?api-version=7.1"
+    )
+    body = [{"op": "add", "path": "/fields/System.History", "value": comment}]
+    r = _requests.patch(url, json=body, headers=_ado_headers())
+    r.raise_for_status()
 
 def ado_update_state(work_item_id: int, state: str, comment: str = "") -> None:
     """Update ADO work item state: New → Active → Closed."""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Oracle — orchestrator agent. Listens in #tasks, clarifies, creates work orders."""
 import asyncio, os, discord, datetime
-from agents_base import acquire_agent_lock, make_agent, run_agent, post_question, check_resume, handoff, ado_create_epic, ado_create_story, ado_update_state
+from agents_base import acquire_agent_lock, make_agent, run_agent, post_question, check_resume, handoff, ado_create_epic, ado_create_story, ado_update_state, ado_add_comment
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -210,6 +210,8 @@ Reply with ONLY the title."""
             )
             ado_story_id = story["id"]
             ado_story_url = story["url"]
+            # Set story to Approved (ready for agent to pick up)
+            ado_update_state(ado_story_id, "Approved", f"Oracle approved and assigned to {target_agent}")
             await task_thread.send(
                 f"📋 **ADO work items created:**\n"
                 f"• Epic #{ado_epic_id}: **{epic_title}**\n"

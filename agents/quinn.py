@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Quinn — QA/tester agent. Listens in #qa for handoffs. Full-spectrum testing capabilities."""
 import os, re, discord
-from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, ado_update_state
+from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, ado_update_state, ado_add_comment
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -231,8 +231,12 @@ async def _run_task(message: discord.Message, prompt: str):
 
         if ado_story_id:
             try:
-                ado_update_state(ado_story_id, "Done", f"Quinn QA complete: {response[:300]}")
-                print(f"Quinn: ADO Story #{ado_story_id} → Closed", flush=True)
+                # Quinn is the last step — setting Done means the full story is complete
+                ado_add_comment(ado_story_id,
+                    f"<b>Quinn QA complete</b><br/>{response[:500]}")
+                ado_update_state(ado_story_id, "Done",
+                    f"Quinn QA passed — story complete")
+                print(f"Quinn: ADO Story #{ado_story_id} → Done", flush=True)
             except Exception as ae:
                 print(f"Quinn: ADO state update failed: {ae}", flush=True)
 
@@ -251,6 +255,12 @@ async def _run_task(message: discord.Message, prompt: str):
     except Exception as e:
         import traceback
         print(f"Quinn ERROR:\n{traceback.format_exc()}", flush=True)
+        if ado_story_id:
+            try:
+                ado_add_comment(ado_story_id,
+                    f"<b>Quinn QA failed</b><br/><pre>{str(e)[:500]}</pre>")
+            except Exception:
+                pass
         await message.add_reaction("❌")
         oversight = client.get_channel(CH_OVERSIGHT)
         if oversight:

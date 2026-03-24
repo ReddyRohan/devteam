@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dev — senior developer agent. Runs on laptop. Listens in #development."""
 import os, re, discord
-from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, handoff, ado_update_state
+from agents_base import acquire_agent_lock, make_agent, run_agent, mcp_filesystem, mcp_fetch, mcp_shell, post_question, check_resume, is_handoff_for, handoff, ado_update_state, ado_add_comment
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/devteam/.env"))
@@ -136,10 +136,12 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         print(f"Dev: done", flush=True)
         if ado_story_id:
             try:
-                ado_update_state(ado_story_id, "Done", f"Dev completed: {response[:300]}")
-                print(f"Dev: ADO Story #{ado_story_id} → Closed", flush=True)
+                # Don't set Done yet — Quinn will do that after QA passes
+                ado_add_comment(ado_story_id,
+                    f"<b>Dev work complete — awaiting QA</b><br/>{response[:500]}")
+                print(f"Dev: ADO Story #{ado_story_id} — comment added (awaiting Quinn)", flush=True)
             except Exception as ae:
-                print(f"Dev: ADO state update failed: {ae}", flush=True)
+                print(f"Dev: ADO comment failed: {ae}", flush=True)
 
         # Auto-handoff to Quinn for testing
         # Extract file paths from response so Quinn knows what to test
@@ -179,6 +181,12 @@ async def _run_task(message: discord.Message, prompt: str, output_path: str | No
         import traceback
         tb = traceback.format_exc()
         print(f"Dev ERROR:\n{tb}", flush=True)
+        if ado_story_id:
+            try:
+                ado_add_comment(ado_story_id,
+                    f"<b>Dev failed</b><br/><pre>{str(e)[:500]}</pre>")
+            except Exception:
+                pass
         await message.add_reaction("❌")
         await message.reply(f"❌ **Dev failed:** `{str(e)[:300]}`")
         oversight = client.get_channel(CH_OVERSIGHT)
