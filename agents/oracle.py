@@ -90,37 +90,46 @@ async def _process_task(message: discord.Message, task_content: str, task_thread
                     raise
             await task_thread.send("📋 Analysing task...")
 
-        # Clarification loop — keep asking until ALL questions are answered
+        # Clarification loop — ask ALL missing questions at once, then check if satisfied
         await task_thread.send("🔍 Checking requirements...")
-        for attempt in range(5):
+        for attempt in range(3):
             clarification_check = await run_agent(
                 agent,
                 f"""You are gathering requirements before assigning a task to a developer.
 
-Current task (may include answers to previous questions):
+Current task (may include any previous answers):
 {task_content}
 
 Do you have ALL the information needed to write a complete, unambiguous work order?
-Think carefully — check for: target environment, project/repo names, specific requirements, output format, constraints.
+Check carefully for: target environment, project/repo names, specific requirements, output format, constraints.
 
 Reply with ONLY one of:
-- READY: <one sentence confirming you have everything needed>
-- QUESTION: <the single most important missing piece of information>
 
-Be thorough. Do not assign until you are 100% clear."""
+If you have everything:
+READY: <one sentence confirming you have everything needed>
+
+If anything is unclear or missing, list ALL questions at once (never split across rounds):
+QUESTIONS:
+1. <first question>
+2. <second question>
+3. <third question>
+(list every unanswered question — do not hold back for a later round)
+
+Be thorough. Do not mark READY until every ambiguity is resolved."""
             )
 
-            if clarification_check.strip().upper().startswith("READY"):
+            text = clarification_check.strip()
+            if text.upper().startswith("READY"):
                 await task_thread.send("✅ Requirements clear. Creating work order...")
                 break
-            elif clarification_check.strip().upper().startswith("QUESTION:"):
-                question = clarification_check.strip()[len("QUESTION:"):].strip()
-                await post_question(client, message, question,
+            elif text.upper().startswith("QUESTIONS:"):
+                questions_block = text[len("QUESTIONS:"):].strip()
+                await post_question(client, message, questions_block,
                     {"agent_name": "Oracle", "original_content": task_content,
                      "task_thread_id": task_thread.id},
                     _pending)
-                await task_thread.send(f"❓ **Waiting for answer before proceeding.**")
-                print(f"Oracle: round {attempt+1} — asked: {question[:80]}", flush=True)
+                await task_thread.send("❓ **Waiting for your answers before proceeding.**")
+                print(f"Oracle: round {attempt+1} — asked {questions_block.count(chr(10))+1} questions", flush=True)
                 return  # resumes via check_resume when anyone replies
             else:
                 break  # unexpected format, proceed
