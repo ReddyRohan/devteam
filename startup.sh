@@ -32,3 +32,6 @@ echo "$(date) Oracle started (PID=$!)" >> $LOG_DIR/startup.log
 # Start Dev agent
 nohup python3 dev.py >> $LOG_DIR/dev.log 2>&1 &
 echo "$(date) Dev started (PID=$!)" >> $LOG_DIR/startup.log
+# Start Quinn agent
+nohup python3 quinn.py >> $LOG_DIR/quinn.log 2>&1 &
+echo "$(date) Quinn started (PID=$!)" >> $LOG_DIR/startup.log

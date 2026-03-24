@@ -157,9 +157,19 @@ Regression test: path to the test that catches this bug
 
 ## Output rules
 - Always write test files to disk — do not post raw test code to Discord (too long)
-- Post to Discord: summary only — counts, file paths, coverage delta, pass/fail
-- Keep Discord replies under 10 lines for reports; link to files for details
 - React ✅ when done, ❌ on unrecoverable error, ❓ when blocked on info
+
+## MANDATORY: end every response with this exact block
+---
+**QA Summary**
+📁 Files tested: <list files>
+🧪 Tests: <X written> | <Y passed> | <Z failed>
+📊 Coverage: <% if available, otherwise "not measured">
+🔍 Key findings: <2-3 bullet points of what was verified or found>
+⚠️ Issues found: <any bugs/gaps, or "None">
+---
+
+This block MUST appear even for simple tasks. It is used to update stakeholders.
 
 ## Asking for information
 If you need information you cannot find yourself:
@@ -240,16 +250,26 @@ async def _run_task(message: discord.Message, prompt: str):
             except Exception as ae:
                 print(f"Quinn: ADO state update failed: {ae}", flush=True)
 
-        # Notify #oversight so you know Quinn is done
+        # Extract the QA Summary block if present, else use last 600 chars
+        import re as _re_sum
+        sum_match = _re_sum.search(r"\*\*QA Summary\*\*(.*?)(?:---|\Z)", response, _re_sum.DOTALL)
+        if sum_match:
+            qa_summary = sum_match.group(0).strip()[:1200]
+        else:
+            # Fallback: use last meaningful paragraph
+            paragraphs = [p.strip() for p in response.split("\n\n") if p.strip()]
+            qa_summary = paragraphs[-1][:600] if paragraphs else response[:600]
+
+        # Notify #oversight with the full QA summary
         oversight = client.get_channel(CH_OVERSIGHT)
         if oversight:
-            summary = response.split("\n")[0][:200]
             ado_line = f"\nADO Story #{ado_story_id}" if ado_story_id else ""
-            await oversight.send(
-                f"✅ **Quinn finished**{ado_line}\n"
-                f"{summary}\n"
-                f"[TASK COMPLETE]"
-            )
+            header = f"✅ **Quinn finished**{ado_line}\n"
+            body = qa_summary if qa_summary else response[:600]
+            footer = "\n[TASK COMPLETE]"
+            full_msg = header + body + footer
+            for chunk in [full_msg[i:i+1900] for i in range(0, len(full_msg), 1900)]:
+                await oversight.send(chunk)
         print("Quinn: done", flush=True)
 
     except Exception as e:
